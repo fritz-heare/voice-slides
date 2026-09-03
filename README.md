@@ -26,6 +26,10 @@ uv run app.py                  # http://127.0.0.1:8097
 `uv` reads the PEP-723 header and installs the one dependency. Plain
 `python3 app.py` also works wherever `websockets>=14` is already present.
 
+The formatting pass calls the ant-proxy on `localhost:8787`, so that service
+must be up (`systemctl --user status ant-proxy`). Nothing else is needed for
+auth.
+
 Then open the page, press **Start dictating**, and talk. Pauses end an
 utterance; a couple of seconds of quiet triggers the formatting pass.
 
@@ -67,14 +71,17 @@ thing, point Slidev at the file.
 | `DECK_PATH` | `~/.local/share/voice-slides/slides.md` | mirrored every pass |
 | `SPEECH_URL` | `http://pook.tail5ae4b.ts.net` | |
 | `SPEECH_HOST` | `heare-speech-services` | Host-header vhost; never use a raw port |
-| `CRED_URL` | `http://localhost:9876/api/credentials` | |
-| `ANTHROPIC_CRED_ID` | `claude-subscription.seanfitz` | billed to the Max subscription, not API credits |
+| `ANTHROPIC_BASE_URL` | `http://localhost:8787` | the ant-proxy |
+| `ANTHROPIC_AUTH_TOKEN` | `proxied` | placeholder; the proxy substitutes its own bearer |
 | `MODEL` | `claude-haiku-4-5-20251001` | |
 | `CLEANUP_DEBOUNCE_S` | `2.5` | silence before a pass |
 | `CLEANUP_MAX_WORDS` | `110` | pass anyway if the buffer gets this big |
 
-The Anthropic token is read from the credential store at call time and lives
-only in the request header. It is never logged, cached, or written to disk.
+Inference goes through ant-proxy on `localhost:8787`, which holds the
+credential, refreshes it, and stamps the `Authorization` header on the way to
+`api.anthropic.com`. This app reads no credential and holds no token. Point
+`ANTHROPIC_BASE_URL` elsewhere and `ANTHROPIC_AUTH_TOKEN` becomes the real
+bearer.
 
 ## The formatting prompt
 
@@ -91,7 +98,7 @@ and the spoken structure commands ("new slide", "title this X", "scratch that",
 
 ```bash
 node test_render.mjs    # Slidev parsing + XSS posture; no network
-python3 test_e2e.py     # real pook STT + real Haiku; needs the tailnet
+python3 test_e2e.py     # real pook STT + real Haiku via ant-proxy; needs the tailnet
 ```
 
 `test_render.mjs` extracts the `<script>` from `static/index.html` and runs it

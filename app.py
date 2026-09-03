@@ -30,7 +30,8 @@ browser, so the deck never needs a round trip to leave.
 Env:
   BIND PORT DECK_PATH
   SPEECH_URL SPEECH_HOST          heare-speech-services location (Host-routed)
-  CRED_URL ANTHROPIC_CRED_ID      credential store lookup for the OAuth token
+  ANTHROPIC_BASE_URL              inference endpoint; defaults to the ant-proxy
+  ANTHROPIC_AUTH_TOKEN            bearer for that endpoint
   MODEL                           Anthropic model id
   CLEANUP_DEBOUNCE_S CLEANUP_MAX_WORDS
 """
@@ -66,11 +67,11 @@ SPEECH_URL = os.environ.get("SPEECH_URL", "http://pook.tail5ae4b.ts.net").rstrip
 SPEECH_HOST = os.environ.get("SPEECH_HOST", "heare-speech-services")
 
 
-CRED_URL = os.environ.get("CRED_URL", "http://localhost:9876/api/credentials").rstrip("/")
-# claude-subscription.seanfitz declares billing = "Max subscription
-# (user:inference scope)": this spends the flat-rate plan, not API credits.
-ANTHROPIC_CRED_ID = os.environ.get("ANTHROPIC_CRED_ID", "claude-subscription.seanfitz")
-ANTHROPIC_URL = "https://api.anthropic.com/v1/messages"
+# ant-proxy holds the credential, refreshes it, and stamps the Authorization
+# header on the way upstream. This process never sees a token.
+ANTHROPIC_BASE_URL = os.environ.get("ANTHROPIC_BASE_URL", "http://localhost:8787").rstrip("/")
+ANTHROPIC_URL = f"{ANTHROPIC_BASE_URL}/v1/messages"
+ANTHROPIC_AUTH_TOKEN = os.environ.get("ANTHROPIC_AUTH_TOKEN", "proxied")
 MODEL = os.environ.get("MODEL", "claude-haiku-4-5-20251001")
 
 # Silence after a final before the deck is rewritten. Long enough that a speaker
@@ -235,26 +236,12 @@ class SttStream:
 # the cleanup pass
 # --------------------------------------------------------------------------
 
-def _oauth_token() -> str:
-    """Read the subscription token at call time.
-
-    Fetched per pass rather than cached at boot so a rotation reaches the next
-    request without a restart. The value is returned, never logged, and never
-    written anywhere.
-    """
-    with urllib.request.urlopen(f"{CRED_URL}/{ANTHROPIC_CRED_ID}", timeout=10) as r:
-        payload = json.loads(r.read())
-    token = (payload.get("data") or {}).get("oauth_token") if payload.get("ok") else None
-    if not token:
-        raise RuntimeError(f"credential {ANTHROPIC_CRED_ID!r} has no oauth_token")
-    return token
-
-
 def _call_model(deck: str, dictation: str) -> str:
     """Blocking Anthropic call. Runs in a thread; returns the new deck markdown.
 
-    An OAuth subscription token authenticates with a bearer header and the
-    oauth-2025-04-20 beta, not x-api-key.
+    ant-proxy drops the inbound Authorization header and substitutes its own,
+    so the bearer sent here is a placeholder. It is real only when
+    ANTHROPIC_BASE_URL points somewhere that authenticates its callers.
     """
     user = (
         f"CURRENT DECK:\n{deck or '(empty — no slides yet)'}\n\n"
@@ -275,9 +262,8 @@ def _call_model(deck: str, dictation: str) -> str:
     }).encode()
     req = urllib.request.Request(ANTHROPIC_URL, data=body, headers={
         "content-type": "application/json",
-        "authorization": f"Bearer {_oauth_token()}",
+        "authorization": f"Bearer {ANTHROPIC_AUTH_TOKEN}",
         "anthropic-version": "2023-06-01",
-        "anthropic-beta": "oauth-2025-04-20",
     })
     with urllib.request.urlopen(req, timeout=120) as resp:
         out = json.loads(resp.read())
@@ -460,8 +446,8 @@ def serve_static(connection: ServerConnection, request) -> Response | None:
 
 async def main() -> None:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
-    log.info("voice-slides on http://%s:%d  (stt=%s via %s, model=%s, deck=%s)",
-             BIND, PORT, SPEECH_URL, SPEECH_HOST, MODEL, DECK_PATH)
+    log.info("voice-slides on http://%s:%d  (stt=%s via %s, llm=%s, model=%s, deck=%s)",
+             BIND, PORT, SPEECH_URL, SPEECH_HOST, ANTHROPIC_BASE_URL, MODEL, DECK_PATH)
     async with serve(handler, BIND, PORT, process_request=serve_static, max_size=None):
         await asyncio.Future()
 

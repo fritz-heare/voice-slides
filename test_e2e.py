@@ -5,7 +5,7 @@ Starts app.py, fetches the page over its own HTTP fallback, then plays the role
 of the browser on /ws: synthesizes speech with heare-speech-services' TTS, sends
 it up as 16 kHz PCM16 frames, ends the turn, and waits for the deck.
 
-Nothing is mocked. Requires the tailnet (pook) and the local credential store.
+Nothing is mocked. Requires the tailnet (pook) and the ant-proxy on :8787.
 
     python3 test_e2e.py
 """
