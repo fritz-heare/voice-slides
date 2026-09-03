@@ -1,0 +1,414 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>voice-slides</title>
+<style>
+  :root {
+    --ink:#1a1a18; --paper:#f4f1e8; --rule:#c9c2ae; --faint:#8a8578;
+    --oxblood:#6b2020; --verdigris:#3f6f63; --slide:#fffdf7;
+  }
+  * { box-sizing:border-box; }
+  html,body { height:100%; margin:0; }
+  body { background:var(--paper); color:var(--ink);
+         font:16px/1.5 Georgia,"EB Garamond",serif;
+         display:flex; flex-direction:column; }
+  header { display:flex; align-items:baseline; gap:1rem; flex-wrap:wrap;
+           padding:.7rem 1rem; border-bottom:1px solid var(--rule); }
+  h1 { font-size:1.1rem; font-weight:normal; letter-spacing:.04em; margin:0; }
+  .sub { font-style:italic; color:var(--faint); font-size:.85rem; margin:0; flex:1; }
+  button { font:.9rem Georgia,serif; padding:.4rem .9rem; background:#fff;
+           border:1px solid var(--rule); border-radius:3px; cursor:pointer; color:var(--ink); }
+  button:hover { border-color:var(--ink); }
+  button:disabled { opacity:.45; cursor:not-allowed; }
+  #rec.on { background:var(--oxblood); color:#fff; border-color:var(--oxblood); }
+  #status { font:.75rem ui-monospace,"Hack",monospace; color:var(--faint); min-width:8rem; }
+  #status.err { color:var(--oxblood); }
+  #status.live { color:var(--verdigris); }
+
+  main { flex:1; display:grid; grid-template-columns:minmax(280px,34%) 1fr; min-height:0; }
+  section { min-height:0; display:flex; flex-direction:column; }
+  #left { border-right:1px solid var(--rule); }
+  .pane-title { font:.7rem/1 ui-monospace,monospace; letter-spacing:.12em;
+                text-transform:uppercase; color:var(--faint);
+                padding:.6rem 1rem .4rem; }
+  #transcript { flex:1; overflow-y:auto; padding:0 1rem 1rem;
+                font:.85rem/1.65 ui-monospace,"Hack",monospace; }
+  #transcript p { margin:0 0 .7rem; }
+  #partial { color:var(--faint); font-style:italic; min-height:1.4em; }
+  #deck { flex:1; overflow-y:auto; padding:0 1.25rem 40vh; }
+
+  .slide { background:var(--slide); border:1px solid var(--rule); border-radius:4px;
+           padding:1.4rem 1.6rem; margin:0 auto 1rem; max-width:680px;
+           aspect-ratio:16/9; overflow:auto; cursor:pointer; position:relative;
+           display:flex; flex-direction:column; justify-content:center; }
+  .slide.active { border-color:var(--verdigris); box-shadow:0 0 0 2px rgba(63,111,99,.18); }
+  .slide.mid .content { margin:auto 0; text-align:center; }
+  .slide.mid ul { display:inline-block; text-align:left; }
+  .slide .content { flex:1; min-height:0; overflow:auto; }
+  .slide .badge { position:absolute; top:.5rem; right:.7rem;
+                  font:.6rem ui-monospace,monospace; letter-spacing:.1em;
+                  text-transform:uppercase; color:var(--faint); }
+  .slide .note { margin-top:.6rem; padding-top:.4rem; border-top:1px dotted var(--rule);
+                 font:.72rem/1.4 ui-monospace,monospace; color:var(--faint); }
+  .slide .note p { margin:.1rem 0; }
+  .slide .lang { font:.6rem ui-monospace,monospace; color:var(--faint); margin-bottom:-.3rem; }
+  .slide hr.slot { border:0; border-top:1px dashed var(--rule); margin:.7rem 0; }
+  .slide li.sub { margin-left:1rem; font-size:.92em; color:#55524a; list-style:circle; }
+  .slide h1 { font-size:1.9rem; line-height:1.15; margin:0 0 .4rem; }
+  .slide h2 { font-size:1.35rem; font-weight:normal; margin:0 0 .7rem;
+              border-bottom:1px solid var(--rule); padding-bottom:.3rem; }
+  .slide h3 { font-size:1.05rem; margin:.4rem 0 .3rem; }
+  .slide ul { margin:.2rem 0; padding-left:1.2rem; }
+  .slide li { margin:.28rem 0; }
+  .slide p { margin:.3rem 0; }
+  .slide blockquote { margin:.4rem 0; padding-left:.8rem;
+                      border-left:2px solid var(--rule); color:#55524a; font-style:italic; }
+  .slide code { font:.85em ui-monospace,"Hack",monospace; background:#eeeade; padding:0 .2em; }
+  .slide pre { background:#eeeade; padding:.6rem .8rem; overflow-x:auto; }
+  .slide pre code { background:none; padding:0; }
+  .slide .num { position:relative; font:.65rem ui-monospace,monospace; color:var(--faint);
+                align-self:flex-end; margin-top:auto; }
+  .empty { color:var(--faint); font-style:italic; text-align:center; padding:3rem 1rem; }
+</style>
+</head>
+<body>
+<header>
+  <h1>voice-slides</h1>
+  <p class="sub">Talk. It builds the deck.</p>
+  <span id="status">connecting…</span>
+  <button id="rec">Start dictating</button>
+  <button id="flush" title="Run the formatting pass now">Format now</button>
+  <button id="export">Export slides.md</button>
+  <button id="slidev">Open in Slidev</button>
+  <button id="reset">New deck</button>
+</header>
+<main>
+  <section id="left">
+    <div class="pane-title">Transcript</div>
+    <div id="transcript"><div id="partial"></div></div>
+  </section>
+  <section>
+    <div class="pane-title">Deck</div>
+    <div id="deck"><div class="empty">Nothing yet — press <b>Start dictating</b> and say what the talk is about.</div></div>
+  </section>
+</main>
+
+<script>
+"use strict";
+const $ = id => document.getElementById(id);
+const statusEl = $('status'), partialEl = $('partial'), transcriptEl = $('transcript'), deckEl = $('deck');
+
+let ws = null, wsReady = false;
+let ctx = null, node = null, src = null, stream = null, deckPath = '';
+let recording = false, deck = '', pinned = -1;
+const EMPTY_HTML = '<div class="empty">Nothing yet — press <b>Start dictating</b> and say what the talk is about.</div>';
+
+// ---------------------------------------------------------------------------
+// § Renderer — an APPROXIMATION of Slidev, not Slidev.
+//
+// The deck is authored as, exported as, and written to disk as valid Slidev
+// markdown. Slidev itself renders it (`npx slidev <deck path>`, hot-reloading
+// off the same file). What this pane does is show the structure while you talk:
+// slide boundaries, layouts, headings, bullets, code, presenter notes. It does
+// not do themes, UnoCSS, Vue components, click animations, or Shiki.
+//
+// Running Slidev's own dev server for this pane would be exact, but it is a
+// Vite/Vue/Node process — a second daemon and ~200 MB of node_modules — which
+// is the one thing the brief rules out. The file on disk is the seam: take the
+// dependency when you want the real renderer, don't when you don't.
+//
+// XSS: every line is escaped BEFORE any markup is applied, and the only tags
+// that reach the DOM are ones this file emits from a closed set. Known Slidev
+// wrappers are DELETED (see WRAPPERS), never passed through. Nothing
+// transcript-derived is ever interpreted as HTML, so DOMPurify has nothing to
+// do — no raw markup survives escapeHtml() to need sanitizing.
+// ---------------------------------------------------------------------------
+
+function escapeHtml(s) {
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+          .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
+// Slidev/Vue wrappers this preview understands. They are DELETED from the
+// source before escaping — never re-emitted — so this stays a pure-text path.
+const WRAPPERS = /<\/?(?:v-click|v-clicks|v-after|v-switch|v-mark|div|span|p)\b[^>]*>/gi;
+
+function inline(s) {                       // s is ALREADY escaped
+  return s
+    .replace(/`([^`]+)`/g, '<code>$1</code>')
+    .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+    .replace(/(^|[^*])\*([^*]+)\*/g, '$1<em>$2</em>')
+    .replace(/\[([^\]]+)\]\([^)]*\)/g, '$1');   // link text only; no href reaches the DOM
+}
+
+// -- Slidev document parsing ------------------------------------------------
+// `---` on its own line is both the slide separator and the YAML fence, so the
+// two are told apart positionally: a block that opens the file, or that opens
+// immediately after a separator and closes at the next `---` with nothing but
+// `key: value` / indented continuation lines in between, is frontmatter.
+
+const YAMLISH = /^(\s*[\w.$-]+\s*:|[\s-]|#)/;
+
+function looksLikeFrontmatter(lines, start) {
+  for (let i = start; i < lines.length; i++) {
+    const l = lines[i];
+    if (l.trim() === '---') return i > start;        // closed, non-empty
+    if (!l.trim()) continue;
+    if (!YAMLISH.test(l)) return false;
+  }
+  return false;
+}
+
+function parseYamlish(text) {
+  const fm = {};
+  for (const l of text.split('\n')) {
+    const m = l.match(/^([\w.$-]+)\s*:\s*(.*)$/);
+    if (m) fm[m[1]] = m[2].replace(/^['"]|['"]$/g, '').trim();
+  }
+  return fm;
+}
+
+function parseDeck(md) {
+  const lines = md.replace(/\r/g, '').split('\n');
+  const slides = [];
+  let i = 0, fm = {}, body = [];
+  if (lines[0] !== undefined && lines[0].trim() === '---' && looksLikeFrontmatter(lines, 1)) {
+    let j = 1;
+    while (lines[j].trim() !== '---') j++;
+    fm = parseYamlish(lines.slice(1, j).join('\n'));
+    i = j + 1;
+  }
+  const flush = () => {
+    if (body.join('').trim() || Object.keys(fm).length) slides.push({ fm, body: body.join('\n') });
+    fm = {}; body = [];
+  };
+  // A fenced code block can contain a line of three dashes; inside one, `---`
+  // is content, not a separator.
+  let fenced = false;
+  for (; i < lines.length; i++) {
+    if (/^\s*```/.test(lines[i])) fenced = !fenced;
+    if (fenced || lines[i].trim() !== '---') { body.push(lines[i]); continue; }
+    flush();
+    if (looksLikeFrontmatter(lines, i + 1)) {
+      let j = i + 1;
+      while (lines[j].trim() !== '---') j++;
+      fm = parseYamlish(lines.slice(i + 1, j).join('\n'));
+      i = j;
+    }
+  }
+  flush();
+  return slides.filter(s => s.body.trim() || s.fm.src);
+}
+
+// Trailing HTML comment == presenter note.
+function splitNote(body) {
+  const m = body.match(/<!--([\s\S]*?)-->\s*$/);
+  return m ? [body.slice(0, m.index), m[1].trim()] : [body, ''];
+}
+
+function renderBody(md) {
+  const out = [];
+  let list = null, fence = null, lang = '';
+  const closeList = () => { if (list) { out.push('</ul>'); list = null; } };
+  for (const raw of md.replace(WRAPPERS, '').split('\n')) {
+    const line = raw.replace(/\s+$/, '');
+    const f = line.match(/^\s*```+\s*([\w+-]*)/);
+    if (f) {
+      if (fence === null) { closeList(); fence = []; lang = f[1] || ''; }
+      else {
+        out.push((lang ? `<div class="lang">${escapeHtml(lang)}</div>` : '') +
+                 '<pre><code>' + fence.map(escapeHtml).join('\n') + '</code></pre>');
+        fence = null;
+      }
+      continue;
+    }
+    if (fence !== null) { fence.push(raw); continue; }
+    if (/^\s*::[\w-]+::\s*$/.test(line)) { closeList(); out.push('<hr class="slot">'); continue; }
+    const h = line.match(/^(#{1,4})\s+(.*)$/);
+    if (h) { closeList(); const n = h[1].length; out.push(`<h${n}>${inline(escapeHtml(h[2]))}</h${n}>`); continue; }
+    const b = line.match(/^(\s*)[-*+]\s+(.*)$/);
+    if (b) {
+      if (!list) { out.push('<ul>'); list = true; }
+      const deep = b[1].length >= 2 ? ' class="sub"' : '';
+      out.push(`<li${deep}>${inline(escapeHtml(b[2]))}</li>`);
+      continue;
+    }
+    const q = line.match(/^>\s?(.*)$/);
+    if (q) { closeList(); out.push(`<blockquote>${inline(escapeHtml(q[1]))}</blockquote>`); continue; }
+    if (!line.trim()) { closeList(); continue; }
+    closeList();
+    out.push(`<p>${inline(escapeHtml(line))}</p>`);
+  }
+  if (fence !== null) out.push('<pre><code>' + fence.map(escapeHtml).join('\n') + '</code></pre>');
+  closeList();
+  return out.join('');
+}
+
+const CENTERED = new Set(['cover', 'center', 'intro', 'statement', 'fact', 'quote', 'section', 'end']);
+
+function renderDeck(md) {
+  const slides = parseDeck(md);
+  if (!slides.length) { deckEl.innerHTML = EMPTY_HTML; return; }
+  // The dictation head is the end of the deck, so that is what the preview
+  // follows — unless the user clicked a slide to pin their attention.
+  const active = pinned >= 0 && pinned < slides.length ? pinned : slides.length - 1;
+  deckEl.innerHTML = '';
+  slides.forEach((s, i) => {
+    const layout = s.fm.layout || (i === 0 ? 'cover' : 'default');
+    const [body, note] = splitNote(s.body);
+    const el = document.createElement('div');
+    el.className = 'slide' + (i === active ? ' active' : '') + (CENTERED.has(layout) ? ' mid' : '');
+    el.innerHTML =
+      `<div class="badge">${escapeHtml(layout)}</div>` +
+      `<div class="content">${renderBody(body)}</div>` +
+      (note ? `<div class="note">${renderBody(note)}</div>` : '') +
+      `<div class="num">${i + 1} / ${slides.length}</div>`;
+    el.addEventListener('click', () => { pinned = (pinned === i ? -1 : i); renderDeck(deck); });
+    deckEl.appendChild(el);
+  });
+  deckEl.children[active].scrollIntoView({ behavior: 'smooth', block: 'center' });
+}
+
+// ---------------------------------------------------------------------------
+// § Transport
+// ---------------------------------------------------------------------------
+
+function connect() {
+  ws = new WebSocket((location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + '/ws');
+  ws.binaryType = 'arraybuffer';
+  ws.onopen = () => { wsReady = true; setStatus('ready'); ws.send(JSON.stringify({ type: 'hello' })); };
+  ws.onclose = () => { wsReady = false; setStatus('reconnecting…', 'err'); setTimeout(connect, 1500); };
+  ws.onmessage = e => onMessage(JSON.parse(e.data));
+}
+
+function setStatus(text, cls) { statusEl.textContent = text; statusEl.className = cls || ''; }
+
+function onMessage(m) {
+  if (m.type === 'partial') { partialEl.textContent = m.text ? '… ' + m.text : ''; scrollTranscript(); }
+  else if (m.type === 'final') {
+    partialEl.textContent = '';
+    const p = document.createElement('p');
+    p.textContent = m.text;
+    transcriptEl.insertBefore(p, partialEl);
+    scrollTranscript();
+  }
+  else if (m.type === 'deck') { deck = m.markdown || ''; renderDeck(deck); setStatus(m.pass_ms ? `deck updated ${(m.pass_ms/1000).toFixed(1)}s` : 'ready'); }
+  else if (m.type === 'status') { if (m.text) setStatus(m.text, m.text === 'formatting…' ? 'live' : ''); }
+  else if (m.type === 'error') { setStatus(m.message, 'err'); }
+  else if (m.type === 'config') {
+    deckPath = m.deck_path;
+    $('slidev').title = 'npx slidev ' + deckPath;
+  }
+}
+
+function scrollTranscript() { transcriptEl.scrollTop = transcriptEl.scrollHeight; }
+
+// ---------------------------------------------------------------------------
+// § Capture. Continuous dictation with energy-based endpointing: /stt/stream is
+// turn-based (one authoritative final per {"type":"end"}), so something has to
+// decide where an utterance ends. A short RMS gate does it without a model, a
+// worklet file, or a VAD dependency.
+// ---------------------------------------------------------------------------
+
+const FRAME = 1024;              // ~64 ms at 16 kHz
+const SILENCE_RMS = 0.012;       // below this counts as silence
+const SILENCE_MS = 900;          // ...for this long, and the utterance ends
+const MAX_TURN_MS = 25000;       // ...or this long regardless, so the deck moves
+
+let voiced = false, lastVoice = 0, turnStart = 0;
+
+async function startRec() {
+  if (recording || !wsReady) return;
+  if (!ctx) {
+    // Ask for 16 kHz directly; the browser resamples, so no manual decimation.
+    ctx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 16000 });
+    stream = await navigator.mediaDevices.getUserMedia({
+      audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true } });
+    src = ctx.createMediaStreamSource(stream);
+    node = ctx.createScriptProcessor(FRAME, 1, 1);
+    node.onaudioprocess = onAudio;
+    src.connect(node);
+    node.connect(ctx.destination);
+  }
+  await ctx.resume();
+  recording = true; voiced = false; turnStart = 0;
+  $('rec').classList.add('on');
+  $('rec').textContent = 'Stop';
+  setStatus('listening…', 'live');
+}
+
+function onAudio(e) {
+  if (!recording || !wsReady) return;
+  const f = e.inputBuffer.getChannelData(0);
+  let sum = 0;
+  const pcm = new Int16Array(f.length);
+  for (let i = 0; i < f.length; i++) {
+    const s = Math.max(-1, Math.min(1, f[i]));
+    sum += s * s;
+    pcm[i] = s < 0 ? s * 0x8000 : s * 0x7fff;
+  }
+  const rms = Math.sqrt(sum / f.length);
+  const now = performance.now();
+
+  if (rms >= SILENCE_RMS) {
+    if (!voiced) { voiced = true; turnStart = now; }
+    lastVoice = now;
+  }
+  // Leading silence is not worth uploading; trailing silence is — it is what
+  // gives the decoder its right-context on the last word.
+  if (voiced) ws.send(pcm.buffer);
+
+  if (voiced && (now - lastVoice > SILENCE_MS || now - turnStart > MAX_TURN_MS)) {
+    ws.send(JSON.stringify({ type: 'end' }));
+    voiced = false;
+  }
+}
+
+function stopRec() {
+  if (!recording) return;
+  recording = false;
+  if (voiced) { ws.send(JSON.stringify({ type: 'end' })); voiced = false; }
+  $('rec').classList.remove('on');
+  $('rec').textContent = 'Start dictating';
+  setStatus('stopped');
+}
+
+// ---------------------------------------------------------------------------
+// § Controls
+// ---------------------------------------------------------------------------
+
+$('rec').addEventListener('click', () => (recording ? stopRec() : startRec()));
+$('flush').addEventListener('click', () => wsReady && ws.send(JSON.stringify({ type: 'flush' })));
+$('reset').addEventListener('click', () => {
+  if (!wsReady || !confirm('Throw away this deck and the transcript?')) return;
+  ws.send(JSON.stringify({ type: 'reset' }));
+  deck = ''; pinned = -1;
+  transcriptEl.querySelectorAll('p').forEach(p => p.remove());
+  renderDeck('');
+});
+$('export').addEventListener('click', () => {
+  const blob = new Blob([deck.replace(/\s*$/, '') + '\n'], { type: 'text/markdown' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'slides.md';
+  a.click();
+  URL.revokeObjectURL(a.href);
+});
+// The app already mirrors every pass to DECK_PATH, so "open in Slidev" is just
+// the command that points Slidev at it — nothing to upload, nothing to sync.
+$('slidev').addEventListener('click', () => {
+  const cmd = 'npx slidev ' + (deckPath || '~/.local/share/voice-slides/slides.md');
+  navigator.clipboard.writeText(cmd).then(
+    () => setStatus('copied: ' + cmd),
+    () => setStatus(cmd));
+});
+document.addEventListener('keydown', e => {
+  if (e.code === 'Space' && e.target === document.body) { e.preventDefault(); recording ? stopRec() : startRec(); }
+});
+
+connect();
+</script>
+</body>
+</html>
