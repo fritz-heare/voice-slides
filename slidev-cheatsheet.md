@@ -184,3 +184,49 @@ classes on any element, and `<style>` blocks scoped to one slide.
    its slide.
 4. Slide content is markdown — indentation matters for lists, and a stray four
    spaces makes a code block.
+
+## Components available in this deck
+
+Not stock Slidev — these ship with voice-slides and are auto-imported from
+`components/` beside the deck file. Both render in the live preview too.
+
+### `<Chart>` — bar and line charts
+
+```md
+<Chart type="bar" title="Where the time goes" unit="ms"
+       :data="[['encode', 40], ['network', 120], ['decode', 240]]" />
+
+<Chart type="line" title="p99 by week"
+       :data="[['w1', 820], ['w2', 610], ['w3', 430], ['w4', 400]]" />
+```
+
+- `type`: `bar` (default, compares magnitudes) or `line` (a trend over time).
+- `:data`: an array of `[label, value]` pairs — note the `:` prefix, it is a
+  Vue binding. Single quotes inside, double quotes outside. Max 12 pairs.
+- `title`, `unit`: optional.
+- Three or more numbers that compare are a chart. Two numbers are a sentence.
+
+### `<Meme>` — an image meme
+
+```md
+<Meme template="drake" top="polling the API" bottom="a websocket" />
+```
+
+- `template`: a memegen.link template id — `drake`, `fine`, `doge`,
+  `distracted-boyfriend`, `success`, `disastergirl`, `buzz`, `two-buttons`,
+  `philosoraptor`, `grumpycat`, `aliens`, `bihw`, `rollsafe`.
+- `top` / `bottom`: caption text as plain prose. Write it normally; the
+  component does memegen's URL escaping.
+- One per slide, and only where a joke earns the space.
+
+### Diagrams
+
+A `mermaid` fenced block works in Slidev for flowcharts and sequence diagrams.
+The live preview shows it as a code block rather than a rendered diagram.
+
+```md
+```mermaid
+graph LR
+  mic --> stt --> haiku --> deck
+```
+```

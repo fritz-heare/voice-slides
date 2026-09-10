@@ -159,5 +159,115 @@ t('hostile frontmatter values are escaped in the layout badge', () => {
   assert.ok(!R.escapeHtml(fm.layout).includes('<img'));
 });
 
+// -- frontmatter detection --------------------------------------------------
+// A `# Heading` + `- bullets` block satisfies the old YAMLISH test on every
+// line (`#` reads as a comment, `-` as a list item), so it was consumed as
+// frontmatter along with the separator that closed it — and every slide of
+// that shape vanished from the preview.
+t('a heading + bullets block after a separator is a slide, not frontmatter', () => {
+  const s = R.parseDeck(`---
+theme: default
+title: T
+layout: cover
+---
+
+# T
+
+sub
+
+---
+
+# Slide Two
+
+- a
+- b
+
+---
+
+# Slide Three
+
+- c
+`);
+  assert.strictEqual(s.length, 3, 'got ' + s.length + ' slides: ' + JSON.stringify(s.map(x => x.body.trim().slice(0, 14))));
+  assert.ok(s[1].body.includes('Slide Two'), 'slide two was eaten');
+  assert.ok(s[2].body.includes('Slide Three'));
+});
+
+t('a bullets-only block after a separator is not frontmatter', () => {
+  const s = R.parseDeck('# One\n\n---\n\n- a\n- b\n\n---\n\n# Three\n');
+  assert.strictEqual(s.length, 3, 'got ' + s.length);
+});
+
+t('frontmatter still wins when it is actually frontmatter', () => {
+  const s = R.parseDeck('# One\n\n---\nlayout: two-cols\nclass: text-sm\n---\n\n# Two\n');
+  assert.strictEqual(s.length, 2, 'got ' + s.length);
+  assert.strictEqual(s[1].fm.layout, 'two-cols');
+  assert.ok(!s[1].body.includes('layout:'), 'frontmatter leaked into the body');
+});
+
+// -- components -------------------------------------------------------------
+t('<Chart> renders one bar per pair', () => {
+  const h = R.renderBody(`<Chart type="bar" title="Time" unit="ms" :data="[['encode', 40], ['network', 120], ['decode', 240]]" />`);
+  assert.strictEqual((h.match(/class="bar"/g) || []).length, 3, h);
+  assert.ok(h.includes('>encode<') && h.includes('>240 ms<'), h);
+});
+
+t('<Chart type="line"> renders a polyline and a dot per point', () => {
+  const h = R.renderBody(`<Chart type="line" :data="[['w1', 820], ['w2', 610], ['w3', 400]]" />`);
+  assert.ok(h.includes('<polyline'), h);
+  assert.strictEqual((h.match(/class="dot"/g) || []).length, 3, h);
+});
+
+t('a component tag wrapped over two lines still renders', () => {
+  const h = R.renderBody(`<Chart type="bar" title="Where the time goes"\n       :data="[['a', 1], ['b', 2]]" />`);
+  assert.ok(h.includes('class="vs-chart"') && h.includes('>b<'), h);
+  assert.ok(!h.includes('&lt;Chart'), 'tag leaked through as text: ' + h);
+});
+
+t('<Chart> with no parseable data renders nothing', () => {
+  assert.strictEqual(R.renderBody('<Chart type="bar" :data="whatever" />'), '');
+});
+
+t('<Meme> builds a memegen url with memegen escaping', () => {
+  const h = R.renderBody('<Meme template="drake" top="polling the API" bottom="a websocket" />');
+  assert.ok(h.includes('src="https://api.memegen.link/images/drake/polling_the_API/a_websocket.png"'), h);
+});
+
+t('<Meme> falls back when the template id is not a template id', () => {
+  const h = R.renderBody('<Meme template="../../etc/passwd" top="no" bottom="no" />');
+  assert.ok(h.includes('/images/fine/'), h);
+  assert.ok(!h.includes('passwd'), h);
+});
+
+// The component path is the one place the renderer emits an attribute whose
+// value is derived from the transcript, so it gets its own hostile pass.
+t('hostile component attributes cannot break out of the attribute', () => {
+  const hostile = [
+    `<Meme template="x\\" onerror=\\"alert(1)" top="a" bottom="b" />`,
+    `<Meme template="fine" top="\\" onerror=\\"alert(1)" bottom="b" />`,
+    `<Chart type="bar" title="<img src=x onerror=alert(1)>" :data="[['<svg onload=alert(1)>', 1]]" />`,
+    `<Chart type="bar" :data="[['a', 1]]" onload="alert(1)" />`,
+  ];
+  // A tag whose attribute value contains a `>` never matches the component
+  // pattern at all and falls through to escaped text, which is inert — so the
+  // invariant is about the tags the renderer EMITS, not about substrings.
+  const OK = new Set(['figure', 'div', 'svg', 'g', 'rect', 'line', 'text', 'circle',
+                      'polyline', 'img', 'p']);
+  const OK_ATTR = /^(class|x|y|x1|y1|x2|y2|cx|cy|r|rx|width|height|viewBox|points|transform|text-anchor|src|alt|loading)$/;
+  for (const s of hostile) {
+    const out = R.renderBody(s);
+    for (const m of out.matchAll(/<\/?([a-zA-Z][\w-]*)([^>]*)>/g)) {
+      assert.ok(OK.has(m[1].toLowerCase()), `tag <${m[1]}> from ${s}`);
+      for (const a of m[2].matchAll(/([\w-]+)\s*=/g)) {
+        assert.ok(OK_ATTR.test(a[1]), `attribute ${a[1]} on <${m[1]}> from ${s}: ${out}`);
+      }
+    }
+    for (const m of out.matchAll(/src="([^"]*)"/g)) {
+      assert.ok(m[1].startsWith('https://api.memegen.link/images/'),
+                'src outside the meme host: ' + m[1]);
+    }
+  }
+});
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);
