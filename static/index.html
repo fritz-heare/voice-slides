@@ -2,14 +2,26 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>voice-slides — presenter</title>
-<link rel="stylesheet" href="app.css">
+<!-- The only place this page's version appears; the badge and the ?v= stamps
+     below all come from the same substitution. -->
+<meta name="app-version" content="__VERSION__">
+<meta name="theme-color" content="#f6f7f9" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#161a20" media="(prefers-color-scheme: dark)">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="slides">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link rel="manifest" href="manifest.webmanifest?v=__VERSION__">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png?v=__VERSION__">
+<link rel="icon" href="icons/icon-192.png?v=__VERSION__" type="image/png">
+<link rel="stylesheet" href="app.css?v=__VERSION__">
+<script src="sw-register.js?v=__VERSION__"></script>
 </head>
 <body>
 <header>
   <h1>voice-slides</h1>
-  <p class="sub">Talk. It builds the deck.</p>
+  <p class="sub">Talk. It builds the deck. <span class="ver" data-app-version title="Installed version"></span></p>
   <div id="nav" title="Which slide the popout is showing">
     <button id="prev" aria-label="Previous slide">&lsaquo;</button>
     <span class="pos" id="pos">– / –</span>
@@ -64,7 +76,7 @@
 // presenting. The presenter owns the state; the popout is a view of it.
 // ---------------------------------------------------------------------------
 
-import * as R from './render.js';
+import * as R from './render.js?v=__VERSION__';
 
 const $ = id => document.getElementById(id);
 const statusEl = $('status'), partialEl = $('partial'),
@@ -159,7 +171,7 @@ if (chan) chan.onmessage = e => {
 };
 
 $('popout').addEventListener('click', () => {
-  stage = window.open('present.html', 'voice-slides-stage',
+  stage = window.open('present.html?v=__VERSION__', 'voice-slides-stage',
                       'width=1280,height=740,menubar=no,toolbar=no');
   if (!stage) { setStatus('popup blocked', 'err'); return; }
   setTimeout(publish, 400);        // in case it misses its own hello

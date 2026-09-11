@@ -134,6 +134,23 @@ if os.environ.get("CLEANUP_DEBOUNCE_S"):
 HERE = pathlib.Path(__file__).parent
 STATIC = HERE / "static"
 CHEATSHEET = HERE / "slidev-cheatsheet.md"
+
+# One release number, read from the repo's VERSION file. Every place the
+# browser needs it -- the service worker's cache name, each page's
+# <meta name="app-version">, the ?v= stamps on the asset links, the manifest
+# shortcut -- is written as `__VERSION__` on disk and substituted on the way
+# out, so bumping that one file is the whole release step and no two files can
+# disagree about which version is running.
+VERSION_FILE = HERE / "VERSION"
+APP_VERSION = (VERSION_FILE.read_text(encoding="utf-8").strip()
+               if VERSION_FILE.is_file() else "dev")
+VERSION_TOKEN = b"__VERSION__"
+SUBSTITUTED = {".html", ".js", ".webmanifest"}
+
+# Entry points answer no-cache. A deploy is invisible until the browser
+# re-fetches sw.js and sees different bytes, so sw.js must never be held; the
+# pages carry the version meta, and the manifest carries the stamped shortcut.
+NO_CACHE = {"index.html", "present.html", "sw.js", "manifest.webmanifest"}
 # Vue single-file components the deck may reference. Slidev auto-imports from a
 # `components/` directory beside the deck file, so these are copied there.
 COMPONENTS_SRC = HERE / "slidev" / "components"
@@ -1168,6 +1185,7 @@ async def handler(ws: ServerConnection) -> None:
                 # so the controls and the prompts cannot drift apart.
                 await session.send(
                     type="config", deck_path=str(DECK_PATH), model=MODEL,
+                    version=APP_VERSION,
                     modality=session.modality, theme=session.theme,
                     features=sorted(session.features),
                     phrase_pause_s=PHRASE_PAUSE_S, continuous_max_s=CONTINUOUS_MAX_S,
@@ -1188,33 +1206,52 @@ async def handler(ws: ServerConnection) -> None:
 # --------------------------------------------------------------------------
 
 def serve_static(connection: ServerConnection, request) -> Response | None:
-    if request.path == "/ws":
+    # The query comes off first: the asset links and the manifest shortcut
+    # carry `?v=<version>`, and a stamped path has to resolve to the same file
+    # and the same cache-control as the bare one.
+    path = request.path.split("?", 1)[0]
+    if path == "/ws":
         return None  # let the handshake proceed
-    rel = "index.html" if request.path in ("/", "") else request.path.lstrip("/")
-    rel = rel.split("?", 1)[0]
+    rel = "index.html" if path in ("/", "") else path.lstrip("/")
     target = (STATIC / rel).resolve()
     if not target.is_file() or STATIC.resolve() not in target.parents:
         return Response(404, "Not Found", Headers({"content-length": "0"}), b"")
     body = target.read_bytes()
+    if target.suffix in SUBSTITUTED:
+        body = body.replace(VERSION_TOKEN, APP_VERSION.encode())
     ctype = mimetypes.guess_type(target.name)[0] or "application/octet-stream"
     if target.suffix in (".js", ".mjs"):
         ctype = "text/javascript"     # mimetypes still says x-javascript on some boxes
+    elif target.suffix == ".webmanifest":
+        ctype = "application/manifest+json"
     # The vendored mermaid bundle is 2.5 MB and changes when someone re-vendors
-    # it, not between requests; everything else is a file being edited.
-    cache = "public, max-age=86400" if "vendor/" in rel else "no-store"
-    return Response(200, "OK", Headers({
+    # it, not between requests. Everything past the entry points is safe to
+    # hold for an hour because the links to it move with the version.
+    if rel in NO_CACHE:
+        cache = "no-cache"
+    elif "vendor/" in rel:
+        cache = "public, max-age=86400"
+    else:
+        cache = "public, max-age=3600"
+    headers = Headers({
         "content-type": ctype,
         "content-length": str(len(body)),
         "cache-control": cache,
-    }), body)
+        "x-app-version": APP_VERSION,
+    })
+    if rel == "sw.js":
+        # The worker registers with scope './', already its own directory; the
+        # header is what keeps that legal if a page ever moves deeper than it.
+        headers["service-worker-allowed"] = "/"
+    return Response(200, "OK", headers, body)
 
 
 async def main() -> None:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     sync_components()
-    log.info("voice-slides on http://%s:%d  (stt=%s via %s, llm=%s, model=%s, deck=%s, "
+    log.info("voice-slides v%s on http://%s:%d  (stt=%s via %s, llm=%s, model=%s, deck=%s, "
              "modality=%s, theme=%s, phrase-break=%.1fs/%.1fs/%.1fs ceiling=%.1fs)",
-             BIND, PORT, SPEECH_URL, SPEECH_HOST, ANTHROPIC_BASE_URL, MODEL, DECK_PATH,
+             APP_VERSION, BIND, PORT, SPEECH_URL, SPEECH_HOST, ANTHROPIC_BASE_URL, MODEL, DECK_PATH,
              DEFAULT_MODALITY, DEFAULT_THEME, PHRASE_PAUSE_S, SOFT_PAUSE_S,
              MIDPHRASE_PAUSE_S, CONTINUOUS_MAX_S)
     async with serve(handler, BIND, PORT, process_request=serve_static, max_size=None):

@@ -2,13 +2,26 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>voice-slides</title>
-<link rel="stylesheet" href="app.css">
+<!-- Every navigable page is a full member of the app: its own version meta,
+     the manifest link (without it iOS leaves standalone mode on navigation),
+     the icons, and the registration script. -->
+<meta name="app-version" content="__VERSION__">
+<meta name="theme-color" content="#0d0f13">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="slides">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link rel="manifest" href="manifest.webmanifest?v=__VERSION__">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png?v=__VERSION__">
+<link rel="icon" href="icons/icon-192.png?v=__VERSION__" type="image/png">
+<link rel="stylesheet" href="app.css?v=__VERSION__">
+<script src="sw-register.js?v=__VERSION__"></script>
 </head>
 <body class="stage">
 <div class="stage-wrap"><div class="slide" id="slide"></div></div>
-<div class="waiting" id="waiting">waiting for the presenter window…</div>
+<div class="waiting" id="waiting">waiting for the presenter window…
+  <span class="ver" data-app-version></span></div>
 <script type="module">
 "use strict";
 // ---------------------------------------------------------------------------
@@ -25,7 +38,7 @@
 // here is posted back so the presenter's highlight follows.
 // ---------------------------------------------------------------------------
 
-import * as R from './render.js';
+import * as R from './render.js?v=__VERSION__';
 
 const slideEl = document.getElementById('slide'), waitEl = document.getElementById('waiting');
 const chan = new BroadcastChannel('voice-slides');
