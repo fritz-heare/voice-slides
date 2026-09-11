@@ -1,0 +1,282 @@
+
+  /* Light is the default; dark follows the OS unless the toggle overrides it,
+     so the same two blocks serve `prefers-color-scheme` and the button. */
+  :root {
+    --bg:#f6f7f9; --surface:#ffffff; --surface-2:#f1f3f6; --slide:#ffffff;
+    --text:#16181d; --muted:#6b7280; --border:#e5e7eb;
+    --accent:#6366f1; --accent-soft:#eef0fe; --danger:#dc2626; --ok:#0f9d76;
+    --shadow-sm:0 1px 2px rgb(16 24 40 / 6%);
+    --shadow-md:0 1px 2px rgb(16 24 40 / 6%), 0 10px 28px -14px rgb(16 24 40 / 30%);
+    --shadow-lg:0 1px 3px rgb(16 24 40 / 8%), 0 18px 40px -16px rgb(16 24 40 / 35%);
+    --r-sm:8px; --r-md:12px; --r-lg:16px;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg:#0d0f13; --surface:#161a20; --surface-2:#1c2128; --slide:#181c22;
+      --text:#e6e8ec; --muted:#98a1af; --border:#272d36;
+      --accent:#818cf8; --accent-soft:#1e2233; --danger:#f87171; --ok:#34d399;
+      --shadow-sm:0 1px 2px rgb(0 0 0 / 40%);
+      --shadow-md:0 1px 2px rgb(0 0 0 / 40%), 0 10px 28px -14px rgb(0 0 0 / 70%);
+      --shadow-lg:0 1px 3px rgb(0 0 0 / 50%), 0 18px 40px -16px rgb(0 0 0 / 80%);
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg:#0d0f13; --surface:#161a20; --surface-2:#1c2128; --slide:#181c22;
+    --text:#e6e8ec; --muted:#98a1af; --border:#272d36;
+    --accent:#818cf8; --accent-soft:#1e2233; --danger:#f87171; --ok:#34d399;
+    --shadow-sm:0 1px 2px rgb(0 0 0 / 40%);
+    --shadow-md:0 1px 2px rgb(0 0 0 / 40%), 0 10px 28px -14px rgb(0 0 0 / 70%);
+    --shadow-lg:0 1px 3px rgb(0 0 0 / 50%), 0 18px 40px -16px rgb(0 0 0 / 80%);
+  }
+
+  * { box-sizing:border-box; }
+  html,body { height:100%; margin:0; }
+  body { background:var(--bg); color:var(--text);
+         font:15px/1.55 ui-sans-serif,-apple-system,"Segoe UI",Inter,Roboto,
+              "Helvetica Neue",sans-serif;
+         -webkit-font-smoothing:antialiased;
+         display:flex; flex-direction:column; }
+
+  header { display:flex; align-items:center; gap:.6rem; flex-wrap:wrap;
+           padding:.55rem .9rem; background:var(--surface);
+           border-bottom:1px solid var(--border); box-shadow:var(--shadow-sm);
+           position:relative; z-index:2; }
+  h1 { font-size:.95rem; font-weight:600; letter-spacing:-.01em; margin:0 .3rem 0 0; }
+  .sub { color:var(--muted); font-size:.8rem; margin:0; flex:1; min-width:6rem; }
+
+  button, select { font:inherit; font-size:.82rem; color:var(--text);
+           background:var(--surface); border:1px solid var(--border);
+           border-radius:var(--r-sm); padding:.4rem .75rem; cursor:pointer;
+           box-shadow:var(--shadow-sm);
+           transition:background .12s ease, border-color .12s ease,
+                      box-shadow .12s ease, transform .06s ease; }
+  button:hover, select:hover { background:var(--surface-2); border-color:var(--muted); }
+  button:active { transform:translateY(1px); }
+  button:focus-visible, select:focus-visible {
+           outline:2px solid var(--accent); outline-offset:2px; }
+  button:disabled { opacity:.45; cursor:not-allowed; }
+  #rec { font-weight:600; }
+  #rec.on { background:var(--accent); border-color:var(--accent); color:#fff;
+            box-shadow:var(--shadow-md); }
+  #theme { padding:.4rem .55rem; }
+
+  #modality { padding-right:1.6rem; }
+  #status { font:.75rem/1 ui-monospace,"SF Mono",Menlo,monospace; color:var(--muted);
+            min-width:9rem; text-align:right; }
+  #status.err { color:var(--danger); }
+  #status.live { color:var(--ok); }
+
+  main { flex:1; display:grid; grid-template-columns:minmax(260px,32%) 1fr;
+         min-height:0; gap:.9rem; padding:.9rem; }
+  section { min-height:0; display:flex; flex-direction:column;
+            background:var(--surface); border:1px solid var(--border);
+            border-radius:var(--r-lg); box-shadow:var(--shadow-md); overflow:hidden; }
+  .pane-title { font:.68rem/1 ui-sans-serif,system-ui,sans-serif; font-weight:600;
+                letter-spacing:.09em; text-transform:uppercase; color:var(--muted);
+                padding:.75rem 1rem .5rem; display:flex; align-items:center; gap:.5rem; }
+
+  #transcript { flex:1; overflow-y:auto; padding:0 1rem 1rem;
+                font:.85rem/1.6 ui-monospace,"SF Mono",Menlo,monospace; }
+  #transcript p { margin:0 0 .7rem; }
+  #partial { color:var(--muted); min-height:1.4em; }
+  #deck { flex:1; overflow-y:auto; padding:.2rem 1rem 40vh; }
+
+  /* Tool chips: the loading indicator for a fetch in flight. */
+  #tools { display:flex; flex-wrap:wrap; gap:.4rem; padding:0 1rem;
+           margin-left:auto; justify-content:flex-end; }
+  #tools:empty { display:none; }
+  .chip { display:inline-flex; align-items:center; gap:.4rem; max-width:22rem;
+          font:.72rem/1 ui-sans-serif,system-ui,sans-serif; text-transform:none;
+          letter-spacing:0; color:var(--muted); background:var(--surface-2);
+          border:1px solid var(--border); border-radius:999px;
+          padding:.3rem .65rem; box-shadow:var(--shadow-sm);
+          overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+          transition:opacity .3s ease; }
+  .chip.done { color:var(--ok); }
+  .chip.error { color:var(--danger); border-color:var(--danger); }
+  .chip.fade { opacity:0; }
+  .spin { width:.7rem; height:.7rem; flex:none; border-radius:50%;
+          border:2px solid var(--border); border-top-color:var(--accent);
+          animation:spin .7s linear infinite; }
+  .chip.done .spin, .chip.error .spin { animation:none; border:none;
+          width:auto; height:auto; }
+  @keyframes spin { to { transform:rotate(360deg); } }
+
+  .slide { background:var(--slide); border:1px solid var(--border);
+           border-radius:var(--r-md); padding:1.5rem 1.7rem; margin:0 auto 1rem;
+           max-width:760px; aspect-ratio:16/9; overflow:auto; cursor:pointer;
+           position:relative; display:flex; flex-direction:column;
+           justify-content:center; box-shadow:var(--shadow-md);
+           transition:box-shadow .15s ease, border-color .15s ease; }
+  .slide:hover { box-shadow:var(--shadow-lg); }
+  .slide.active { border-color:var(--accent); box-shadow:var(--shadow-lg),
+                  0 0 0 3px var(--accent-soft); }
+  .slide.mid .content { margin:auto 0; text-align:center; }
+  .slide.mid ul { display:inline-block; text-align:left; }
+  .slide .content { flex:1; min-height:0; overflow:auto; }
+  .slide .badge { position:absolute; top:.6rem; right:.7rem;
+                  font:.6rem/1 ui-monospace,Menlo,monospace; letter-spacing:.06em;
+                  color:var(--muted); background:var(--surface-2);
+                  border-radius:999px; padding:.22rem .5rem; }
+  .slide .note { margin-top:.7rem; padding-top:.5rem; border-top:1px solid var(--border);
+                 font:.72rem/1.45 ui-sans-serif,system-ui,sans-serif; color:var(--muted); }
+  .slide .note p { margin:.1rem 0; }
+  .slide .lang { font:.6rem ui-monospace,Menlo,monospace; color:var(--muted);
+                 margin-bottom:.2rem; }
+  .slide hr.slot { border:0; border-top:1px dashed var(--border); margin:.7rem 0; }
+  .slide li.sub { margin-left:1rem; font-size:.92em; color:var(--muted); list-style:circle; }
+  .slide h1 { font-size:1.85rem; line-height:1.15; letter-spacing:-.02em; margin:0 0 .5rem;
+              font-weight:650; }
+  .slide h2 { font-size:1.3rem; font-weight:600; letter-spacing:-.01em; margin:0 0 .6rem; }
+  .slide h3 { font-size:1.02rem; font-weight:600; margin:.5rem 0 .3rem; }
+  .slide ul { margin:.2rem 0; padding-left:1.15rem; }
+  .slide li { margin:.3rem 0; }
+  .slide li::marker { color:var(--accent); }
+  .slide p { margin:.35rem 0; }
+  .slide blockquote { margin:.5rem 0; padding:.1rem 0 .1rem .9rem;
+                      border-left:3px solid var(--accent); color:var(--muted); }
+  .slide code { font:.86em ui-monospace,"SF Mono",Menlo,monospace;
+                background:var(--surface-2); border-radius:5px; padding:.08em .32em; }
+  .slide pre { background:var(--surface-2); border:1px solid var(--border);
+               border-radius:var(--r-sm); padding:.7rem .9rem; overflow-x:auto;
+               font-size:.85em; }
+  .slide pre code { background:none; padding:0; }
+  .slide .num { position:relative; font:.65rem ui-monospace,Menlo,monospace;
+                color:var(--muted); align-self:flex-end; margin-top:auto; }
+  .empty { color:var(--muted); text-align:center; padding:3.5rem 1rem; }
+
+  /* Components. The same vocabulary the Vue SFCs render in Slidev proper. */
+  .vs-chart { margin:.6rem 0; padding:.85rem 1rem; border-radius:var(--r-md);
+              background:var(--surface-2); box-shadow:var(--shadow-sm); text-align:left; }
+  .vs-chart .cap { font-size:.78rem; color:var(--muted); margin-bottom:.45rem; }
+  .vs-chart svg { width:100%; height:auto; overflow:visible; }
+  .vs-chart .bar { fill:var(--accent); }
+  .vs-chart .track { fill:currentColor; opacity:.09; }
+  .vs-chart .axis { stroke:currentColor; opacity:.18; }
+  .vs-chart .series { fill:none; stroke:var(--accent); stroke-width:2.5;
+                      stroke-linejoin:round; stroke-linecap:round; }
+  .vs-chart .dot { fill:var(--accent); }
+  .vs-chart .lbl { font-size:12px; fill:currentColor; opacity:.7; }
+  .vs-chart .val { font-size:12px; fill:currentColor; opacity:.95; }
+  .vs-meme { margin:.5rem auto; text-align:center; }
+  .vs-meme img { max-height:min(320px,42vh); max-width:100%; border-radius:var(--r-md);
+                 box-shadow:var(--shadow-lg); }
+
+  @media (max-width:820px) {
+    main { grid-template-columns:1fr; grid-template-rows:minmax(120px,26%) 1fr; }
+  }
+
+  /* -----------------------------------------------------------------------
+     § Themes. A theme is a palette of the SAME custom properties the base
+     light/dark blocks set, selected by `data-palette` on <html>. It is
+     orthogonal to light/dark: `parchment` has a dark form, `noir` has a light
+     one, and the ◐ toggle keeps meaning exactly what it meant in v2.
+     The ids here are mirrored in app.py's THEMES, because the model has to be
+     able to name one; test_app.py reads them back out of this file and fails
+     if the two lists drift.
+     ----------------------------------------------------------------------- */
+  :root[data-palette="default"] { --accent:#6366f1; --accent-soft:#eef0fe; }
+  :root[data-palette="parchment"] { --accent:#7b2d26; --accent-soft:#f2e6dd; --bg:#efe7d8; --surface:#fbf6ea; --surface-2:#f2ead8; --slide:#fdfaf1; --text:#241f18; --muted:#6d6250; --border:#ddd0b6; --display:"Iowan Old Style","Palatino Linotype",Palatino,Georgia,serif; }
+  :root[data-palette="slate"] { --accent:#3f6b8f; --accent-soft:#e6eef5; --bg:#eef1f4; --surface:#fbfcfd; --slide:#ffffff; }
+  :root[data-palette="verdigris"] { --accent:#2f7d6b; --accent-soft:#e2f0ec; --bg:#f2f4f0; --slide:#fcfdfa; }
+  :root[data-palette="brass"] { --accent:#9a6b1f; --accent-soft:#f6ecd8; --bg:#f5f1e8; --slide:#fffdf7; }
+  :root[data-palette="noir"] { --accent:#111111; --accent-soft:#ececec; --bg:#f2f2f2; --surface:#ffffff; --slide:#ffffff; --border:#cfcfcf; --muted:#666666; }
+  :root[data-palette="solar"] { --accent:#d2540c; --accent-soft:#fdeade; --bg:#fbf4ee; --slide:#fffdfb; }
+
+  @media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"])[data-palette="default"] { --accent:#818cf8; --accent-soft:#1e2233; }
+  :root:not([data-theme="light"])[data-palette="parchment"] { --accent:#d9776a; --accent-soft:#2a1d18; --bg:#14110d; --surface:#1c1813; --surface-2:#241f18; --slide:#1f1a14; --text:#ece2d2; --muted:#a3947c; --border:#332b21; --display:"Iowan Old Style","Palatino Linotype",Palatino,Georgia,serif; }
+  :root:not([data-theme="light"])[data-palette="slate"] { --accent:#7fb0d6; --accent-soft:#16212b; --bg:#0b1016; --surface:#131b23; --slide:#151e27; }
+  :root:not([data-theme="light"])[data-palette="verdigris"] { --accent:#57c3a8; --accent-soft:#122320; --bg:#0a1211; --surface:#121c1a; --slide:#13201d; }
+  :root:not([data-theme="light"])[data-palette="brass"] { --accent:#d6a441; --accent-soft:#251d0d; --bg:#100d08; --surface:#1a160f; --slide:#1d1810; }
+  :root:not([data-theme="light"])[data-palette="noir"] { --accent:#f5f5f5; --accent-soft:#232323; --bg:#070707; --surface:#131313; --slide:#161616; --border:#2e2e2e; --muted:#9a9a9a; }
+  :root:not([data-theme="light"])[data-palette="solar"] { --accent:#ff9b4a; --accent-soft:#2a1a0d; --bg:#0f0b07; --surface:#1a130c; --slide:#1d150d; }
+  }
+  :root[data-theme="dark"][data-palette="default"] { --accent:#818cf8; --accent-soft:#1e2233; }
+  :root[data-theme="dark"][data-palette="parchment"] { --accent:#d9776a; --accent-soft:#2a1d18; --bg:#14110d; --surface:#1c1813; --surface-2:#241f18; --slide:#1f1a14; --text:#ece2d2; --muted:#a3947c; --border:#332b21; --display:"Iowan Old Style","Palatino Linotype",Palatino,Georgia,serif; }
+  :root[data-theme="dark"][data-palette="slate"] { --accent:#7fb0d6; --accent-soft:#16212b; --bg:#0b1016; --surface:#131b23; --slide:#151e27; }
+  :root[data-theme="dark"][data-palette="verdigris"] { --accent:#57c3a8; --accent-soft:#122320; --bg:#0a1211; --surface:#121c1a; --slide:#13201d; }
+  :root[data-theme="dark"][data-palette="brass"] { --accent:#d6a441; --accent-soft:#251d0d; --bg:#100d08; --surface:#1a160f; --slide:#1d1810; }
+  :root[data-theme="dark"][data-palette="noir"] { --accent:#f5f5f5; --accent-soft:#232323; --bg:#070707; --surface:#131313; --slide:#161616; --border:#2e2e2e; --muted:#9a9a9a; }
+  :root[data-theme="dark"][data-palette="solar"] { --accent:#ff9b4a; --accent-soft:#2a1a0d; --bg:#0f0b07; --surface:#1a130c; --slide:#1d150d; }
+
+  /* -----------------------------------------------------------------------
+     § v3 additions
+     ----------------------------------------------------------------------- */
+
+  /* Diagrams. The container holds the fence source as <pre class="src"> until
+     mermaid replaces it, so what you see before hydration is the diagram you
+     dictated, in text. `.failed` means mermaid could not parse it and the
+     source is what you are left with, which is why the source is styled at all
+     rather than hidden. */
+  .vs-mermaid { margin:.5rem auto; text-align:center; max-width:100%; overflow:auto; }
+  .vs-mermaid svg { max-width:100%; height:auto; }
+  .vs-mermaid .src { text-align:left; background:var(--surface-2);
+                     border:1px dashed var(--border); border-radius:var(--r-sm);
+                     padding:.6rem .8rem; font-size:.78em; margin:0;
+                     color:var(--muted); }
+  .vs-mermaid.failed .src { border-color:var(--danger); color:var(--text); }
+
+  .vs-figure { margin:.5rem auto; text-align:center; }
+  .vs-figure img { max-height:min(300px,38vh); max-width:100%;
+                   border-radius:var(--r-md); box-shadow:var(--shadow-lg); }
+  .vs-figure figcaption { font-size:.76rem; color:var(--muted); margin-top:.35rem; }
+
+  /* Serif display faces come from the palette, so a theme can change the voice
+     of a heading and not only its colour. */
+  .slide h1, .slide h2 { font-family:var(--display, inherit); }
+
+  /* -- presenter: three panes ------------------------------------------- */
+  main.presenter { grid-template-columns:minmax(240px,26%) 1fr; grid-template-rows:1fr 1fr;
+                   grid-template-areas:"said deck" "agent deck"; }
+  #left { grid-area:said; } #agentpane { grid-area:agent; } #deckpane { grid-area:deck; }
+
+  #agent { flex:1; overflow-y:auto; padding:0 1rem 1rem; font-size:.78rem; }
+  .turn { display:grid; grid-template-columns:4.1rem 1fr; gap:.5rem; margin:0 0 .45rem;
+          align-items:baseline; }
+  .turn .who { font:.62rem/1.5 ui-monospace,Menlo,monospace; letter-spacing:.05em;
+               text-transform:uppercase; color:var(--muted); text-align:right; }
+  .turn .what { min-width:0; overflow-wrap:anywhere; }
+  .turn.dictation .what { color:var(--text); }
+  .turn.dictation.open .what::after { content:" \2026"; color:var(--accent); }
+  .turn.deck .what, .turn.directive .what { color:var(--ok); }
+  .turn.error .what { color:var(--danger); }
+  .turn.config .what, .turn.tool .what { color:var(--muted); }
+
+  /* -- presenter: controls --------------------------------------------- */
+  .menu { position:relative; }
+  .panel { position:absolute; right:0; top:calc(100% + .4rem); z-index:9; min-width:15rem;
+           background:var(--surface); border:1px solid var(--border);
+           border-radius:var(--r-md); box-shadow:var(--shadow-lg); padding:.5rem;
+           display:none; }
+  .menu.open .panel { display:block; }
+  .panel h4 { margin:.25rem .4rem .4rem; font:.62rem/1 ui-sans-serif,system-ui,sans-serif;
+              letter-spacing:.09em; text-transform:uppercase; color:var(--muted); }
+  .panel label { display:flex; align-items:center; gap:.5rem; padding:.3rem .4rem;
+                 border-radius:var(--r-sm); cursor:pointer; font-size:.82rem; }
+  .panel label:hover { background:var(--surface-2); }
+  .panel label small { color:var(--muted); font-size:.7rem; }
+  .swatch { width:.85rem; height:.85rem; border-radius:50%; flex:none;
+            border:1px solid var(--border); }
+  #nav { display:flex; align-items:center; gap:.3rem; }
+  #nav .pos { font:.72rem ui-monospace,Menlo,monospace; color:var(--muted);
+              min-width:3.2rem; text-align:center; }
+  #status .work { color:var(--accent); }
+
+  /* -- popout: one slide, nothing else --------------------------------- */
+  body.stage { background:var(--bg); overflow:hidden; }
+  .stage-wrap { flex:1; display:flex; align-items:center; justify-content:center;
+                padding:2vmin; min-height:0; }
+  .stage-wrap .slide { width:min(96vw, calc(96vh * 16 / 9)); max-width:none;
+                       margin:0; font-size:clamp(15px, 1.55vw, 30px);
+                       padding:4% 5%; cursor:default; }
+  .stage-wrap .slide .badge, .stage-wrap .slide .note { display:none; }
+  .stage-wrap .slide h1 { font-size:2.4em; }
+  .stage-wrap .slide h2 { font-size:1.6em; }
+  .waiting { position:fixed; inset:auto 0 1rem; text-align:center;
+             font:.75rem ui-monospace,Menlo,monospace; color:var(--muted); }
+
+  /* A diagram is the one thing on a slide that wants all the room there is,
+     and mermaid sizes its SVG to the graph rather than to the container. */
+  .stage-wrap .vs-mermaid { width:100%; }
+  .stage-wrap .vs-mermaid svg { width:100%; height:auto; max-height:58vh; }
