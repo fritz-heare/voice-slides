@@ -542,6 +542,113 @@ class Views(unittest.TestCase):
             self.assertIn(el, page, el)
 
 
+class Pwa(unittest.TestCase):
+    """Install and update: one version source, and a precache that installs.
+
+    `cache.addAll` is atomic, so a single missing PRECACHE path stops every
+    future worker from installing -- silently, on a phone, mid-talk. That is
+    what the first test here is for.
+    """
+
+    def setUp(self):
+        self.sw = (app.STATIC / "sw.js").read_text(encoding="utf-8")
+        self.pages = {name: (app.STATIC / name).read_text(encoding="utf-8")
+                      for name in ("index.html", "present.html")}
+
+    def _serve(self, path):
+        from websockets.datastructures import Headers
+        from websockets.http11 import Request
+        return app.serve_static(None, Request(path=path, headers=Headers()))
+
+    def test_every_precached_path_exists(self):
+        listed = re.search(r"const PRECACHE = \[(.*?)\];", self.sw, re.S)
+        self.assertIsNotNone(listed, "PRECACHE list not found in sw.js")
+        paths = re.findall(r"'\./([^']*)'", listed.group(1))
+        self.assertIn("present.html", paths, "the popout is not precached")
+        for rel in paths:
+            with self.subTest(path=rel):
+                target = app.STATIC / (rel or "index.html")
+                self.assertTrue(target.is_file(), f"PRECACHE lists a missing {rel}")
+
+    def test_the_version_lives_in_exactly_one_place(self):
+        self.assertTrue(app.VERSION_FILE.is_file(), "the VERSION file is missing")
+        self.assertEqual(app.APP_VERSION,
+                         app.VERSION_FILE.read_text(encoding="utf-8").strip())
+        self.assertIn("__VERSION__", self.sw, "the worker's cache name is not substituted")
+        for name, page in self.pages.items():
+            with self.subTest(page=name):
+                self.assertIn('<meta name="app-version" content="__VERSION__">', page)
+                # A literal version anywhere else is a string that goes stale.
+                self.assertNotIn(f"v{app.APP_VERSION}", page.replace("__VERSION__", ""))
+
+    def test_both_pages_are_full_members_of_the_app(self):
+        for name, page in self.pages.items():
+            with self.subTest(page=name):
+                # Without the manifest link, iOS drops standalone mode the
+                # moment you navigate here from the other page.
+                self.assertIn('rel="manifest"', page)
+                self.assertIn('rel="apple-touch-icon"', page)
+                self.assertIn("sw-register.js?v=__VERSION__", page)
+                self.assertIn("app.css?v=__VERSION__", page)
+                self.assertIn("render.js?v=__VERSION__", page)
+
+    def test_links_between_the_pages_carry_the_stamp(self):
+        # A query string is a distinct HTTP cache key, which is the only thing
+        # that reliably steps around a copy the phone still thinks is fresh.
+        self.assertIn("present.html?v=__VERSION__", self.pages["index.html"])
+        manifest = json.loads((app.STATIC / "manifest.webmanifest")
+                              .read_text(encoding="utf-8"))
+        for sc in manifest["shortcuts"]:
+            with self.subTest(shortcut=sc["name"]):
+                self.assertIn("?v=__VERSION__", sc["url"])
+
+    def test_the_manifest_is_installable(self):
+        manifest = json.loads((app.STATIC / "manifest.webmanifest")
+                              .read_text(encoding="utf-8"))
+        for key in ("name", "short_name", "start_url", "scope", "id", "display",
+                    "background_color", "theme_color", "icons"):
+            self.assertIn(key, manifest, key)
+        self.assertEqual(manifest["display"], "standalone")
+        sizes = {(i["sizes"], i.get("purpose", "any")) for i in manifest["icons"]}
+        self.assertIn(("192x192", "any"), sizes)
+        self.assertIn(("512x512", "any"), sizes)
+        self.assertIn(("512x512", "maskable"), sizes, "Android crops ~20% of an icon")
+        for icon in manifest["icons"]:
+            with self.subTest(icon=icon["src"]):
+                self.assertTrue((app.STATIC / icon["src"]).is_file())
+
+    def test_the_server_substitutes_the_version_and_reports_it(self):
+        for path in ("/", "/index.html", "/present.html?v=9", "/sw.js",
+                     "/manifest.webmanifest"):
+            with self.subTest(path=path):
+                res = self._serve(path)
+                self.assertEqual(res.status_code, 200)
+                self.assertNotIn(b"__VERSION__", res.body,
+                                 "a version token reached the browser")
+                self.assertEqual(res.headers["x-app-version"], app.APP_VERSION)
+        self.assertIn(f"voice-slides-v{app.APP_VERSION}".encode(),
+                      self._serve("/sw.js").body)
+
+    def test_entry_points_are_never_held_and_assets_are(self):
+        for path in ("/", "/index.html", "/present.html?v=9", "/sw.js",
+                     "/manifest.webmanifest"):
+            with self.subTest(path=path):
+                self.assertEqual(self._serve(path).headers["cache-control"], "no-cache")
+        for path in ("/app.css?v=9", "/render.js", "/icons/icon-192.png"):
+            with self.subTest(path=path):
+                self.assertIn("max-age", self._serve(path).headers["cache-control"])
+
+    def test_the_worker_is_served_as_a_worker(self):
+        res = self._serve("/sw.js")
+        self.assertEqual(res.headers["content-type"], "text/javascript")
+        self.assertEqual(res.headers["service-worker-allowed"], "/")
+        self.assertEqual(self._serve("/manifest.webmanifest").headers["content-type"],
+                         "application/manifest+json")
+
+    def test_a_stamped_traversal_is_still_refused(self):
+        self.assertEqual(self._serve("/../app.py?v=9").status_code, 404)
+
+
 class Cheatsheet(unittest.TestCase):
     """The prompt's reference section is a document, so it can drift from the
     code. These are the tokens the model has to see to be able to emit them."""

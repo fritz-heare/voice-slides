@@ -272,6 +272,10 @@ at the file.
 | `CONTINUOUS_MAX_S` | `4.0` | pass regardless once the buffer is this old |
 | `CLEANUP_MAX_WORDS` | `110` | pass anyway if the buffer gets this big |
 
+The release number is not an env var: it is the `VERSION` file, read at
+startup, reported on the socket's `config` frame and in the `x-app-version`
+response header.
+
 `CLEANUP_DEBOUNCE_S` from v2 still works; it sets `MIDPHRASE_PAUSE_S`.
 
 Inference goes through ant-proxy on `localhost:8787`, which holds the
@@ -317,6 +321,46 @@ Several tests exist only to catch drift between the places a fact has to be true
 twice: the palette ids in `app.py` against the `data-palette` blocks in
 `app.css`, the feature ids in `app.py` against the gates in `render.js`, and the
 directive verbs the validator accepts against the ones the cheatsheet teaches.
+
+## Install it on a device
+
+Both pages are a single installable app: a manifest, icons, and a service
+worker that precaches the shell, so the presenter and the popout open with the
+network unplugged — the popout already presented offline, and now it launches
+offline too. Add to home screen from a **secure context**; loopback counts, and
+so does a `tailscale serve` hostname (the Tailscale cert is what makes it one).
+
+### One version, and how a release lands
+
+`VERSION` at the repo root is the only place the number is written. Every place
+the browser needs it — the worker's cache name, each page's
+`<meta name="app-version">`, the `?v=` stamps on `app.css`, `render.js` and
+`sw-register.js`, the manifest's shortcut URL — says `__VERSION__` on disk, and
+the server substitutes it on the way out. So a release is:
+
+```bash
+echo 5 > VERSION
+systemctl --user restart voice-slides    # the server reads VERSION at startup
+```
+
+and for a checkout deployed from git, the whole deploy is:
+
+```bash
+git pull && systemctl --user restart voice-slides
+```
+
+What the browser then does: it re-fetches `sw.js` (entry points are served
+`no-cache`), sees different bytes, installs a new worker, and **waits** — a
+reload mid-talk is worse than an old deck. The page raises an *Update
+available → Reload* toast; tapping it activates the waiting worker, the old
+cache is deleted, and the page comes back once on the new version. An open
+presenter window also re-checks on every `visibilitychange` and every 20
+minutes, because one can sit open for days.
+
+`test_app.py` covers the parts that go wrong silently: that every `PRECACHE`
+path exists (`addAll` is atomic — one missing file blocks *every* future
+update), that no page carries a second, literal copy of the version, and that
+the entry points are served `no-cache` while the stamped assets are not.
 
 ## Install as a service
 

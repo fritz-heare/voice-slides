@@ -43,6 +43,24 @@
            position:relative; z-index:2; }
   h1 { font-size:.95rem; font-weight:600; letter-spacing:-.01em; margin:0 .3rem 0 0; }
   .sub { color:var(--muted); font-size:.8rem; margin:0; flex:1; min-width:6rem; }
+  /* Filled from <meta name="app-version"> so the running version is readable
+     on a phone that has the app installed and no address bar to inspect. */
+  .ver { font:.7rem ui-monospace,Menlo,monospace; color:var(--muted);
+         opacity:.7; margin-left:.15rem; }
+
+  /* The update prompt: a new worker has installed and is waiting. Reloading is
+     the user's call, because a reload mid-talk is worse than an old deck. */
+  .swtoast { position:fixed; inset:auto 1rem 1rem auto; z-index:50;
+             display:flex; align-items:center; gap:.5rem;
+             padding:.5rem .6rem .5rem .8rem; font-size:.82rem;
+             background:var(--surface); color:var(--text);
+             border:1px solid var(--border); border-radius:var(--r-md);
+             box-shadow:var(--shadow-md); }
+  .swtoast .swgo { border-color:var(--accent); color:var(--accent);
+                   background:var(--accent-soft); }
+  .swtoast .swdismiss { padding:.4rem .5rem; color:var(--muted);
+                        box-shadow:none; background:transparent;
+                        border-color:transparent; }
 
   button, select { font:inherit; font-size:.82rem; color:var(--text);
            background:var(--surface); border:1px solid var(--border);
