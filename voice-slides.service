@@ -1,0 +1,23 @@
+[Unit]
+Description=voice-slides (dictate a Slidev deck, agent formats it live)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/src/voice-slides
+Environment="PATH=%h/.local/bin:/usr/local/bin:/usr/bin:/bin"
+Environment="HOME=%h"
+# Loopback only. The page holds an open mic and drives a subscription-billed
+# model with no auth of its own; reaching it from the tailnet should go through
+# `tailscale serve`, which authenticates.
+Environment="BIND=127.0.0.1"
+Environment="PORT=8097"
+# Point `npx slidev` at this file to get the real renderer with hot reload.
+Environment="DECK_PATH=%h/.local/share/voice-slides/slides.md"
+ExecStart=%h/.local/bin/uv run --quiet %h/src/voice-slides/app.py
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target
