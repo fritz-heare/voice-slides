@@ -1,28 +1,10 @@
-// Renderer tests. Extracts the <script> from static/index.html, stubs the two
-// DOM handles the render path touches, and runs it under node — so the code
-// under test is the code the browser gets, not a copy.
+// Renderer tests. static/render.js is a real ES module, so the code under test
+// is imported, not scraped out of a page — and it is the same module both the
+// presenter and the popout load.
 //
 //   node test_render.mjs
-import { readFileSync } from 'node:fs';
 import assert from 'node:assert';
-
-const html = readFileSync(new URL('./static/index.html', import.meta.url), 'utf8');
-const js = html.slice(html.indexOf('<script>') + 8, html.lastIndexOf('</script>'));
-
-// Everything after the renderer touches WebSocket/AudioContext; cut there.
-const body = js.slice(0, js.indexOf('// § Transport') - 80);
-
-const el = () => ({ innerHTML: '', children: [], appendChild(c) { this.children.push(c); },
-                    addEventListener() {}, scrollIntoView() {}, classList: { add() {} } });
-const deckEl = el();
-const fakeDoc = { createElement: () => el(), getElementById: () => el(), addEventListener() {} };
-const src = body
-  .replace(/^"use strict";/, '')
-  .replace(/const \$ = [^\n]*\n/, '')
-  .replace(/^const statusEl[^\n]*\n/m, '');
-const R = new Function('deckEl', 'document',
-  `${src}\n  return { parseDeck, renderDeck, renderBody, escapeHtml, splitNote };`
-)(deckEl, fakeDoc);
+import * as R from './static/render.js';
 
 let pass = 0, fail = 0;
 const t = (name, fn) => { try { fn(); pass++; console.log('  ok  ' + name); }
@@ -267,6 +249,106 @@ t('hostile component attributes cannot break out of the attribute', () => {
                 'src outside the meme host: ' + m[1]);
     }
   }
+});
+
+
+// -- § v3: mermaid ----------------------------------------------------------
+// The invariant is the degradation, not the diagram: this module never calls
+// mermaid synchronously, so what renderBody emits has to be readable on its
+// own. hydrateMermaid() upgrades it in a browser and is not exercised here.
+t('a mermaid fence renders as a container carrying its own source', () => {
+  const h = R.renderBody('```mermaid\ngraph LR\n  A --> B\n```');
+  assert.ok(h.includes('class="vs-mermaid"'), h);
+  assert.ok(h.includes('data-mermaid="graph LR'), h);
+  assert.ok(h.includes('<pre class="src"><code>graph LR'), 'source is not visible pre-hydration: ' + h);
+});
+
+t('mermaid source is escaped in both the attribute and the body', () => {
+  const h = R.renderBody('```mermaid\ngraph LR\n  A["<img src=x onerror=alert(1)>"] --> B\n```');
+  assert.ok(!h.includes('<img'), h);
+  assert.strictEqual((h.match(/&lt;img/g) || []).length, 2, 'attribute or body unescaped: ' + h);
+});
+
+t('a non-mermaid fence is untouched by the mermaid path', () => {
+  const h = R.renderBody('```python\nx = 1\n```');
+  assert.ok(!h.includes('vs-mermaid') && h.includes('<pre><code>x = 1'), h);
+});
+
+t('diagrams off means the fence is a code block, not a diagram', () => {
+  R.setFeatures(['charts', 'memes', 'images']);
+  const h = R.renderBody('```mermaid\ngraph LR\n  A --> B\n```');
+  R.setFeatures(['charts', 'memes', 'images', 'diagrams']);
+  assert.ok(!h.includes('vs-mermaid') && h.includes('<pre><code>graph LR'), h);
+});
+
+// -- § v3: <Figure> ---------------------------------------------------------
+t('<Figure> renders an https image with a caption', () => {
+  const h = R.renderBody('<Figure src="https://example.com/a.png" caption="the rig" />');
+  assert.ok(h.includes('src="https://example.com/a.png"'), h);
+  assert.ok(h.includes('<figcaption>the rig</figcaption>'), h);
+  assert.ok(h.includes('referrerpolicy="no-referrer"'), h);
+});
+
+t('<Figure> refuses every scheme but https, keeping the caption', () => {
+  for (const bad of ['javascript:alert(1)', 'data:text/html,<script>alert(1)</script>',
+                     'http://example.com/a.png', 'file:///etc/passwd', 'not a url']) {
+    const h = R.renderBody(`<Figure src="${bad}" caption="cap" />`);
+    assert.ok(!h.includes('<img'), `${bad} produced an img: ${h}`);
+    assert.ok(h.includes('cap'), h);
+  }
+});
+
+t('a feature that is off renders as nothing, not as a raw tag', () => {
+  R.setFeatures(['diagrams']);
+  for (const tag of ['<Chart type="bar" :data="[[\'a\', 1]]" />',
+                     '<Meme template="drake" top="a" bottom="b" />',
+                     '<Figure src="https://example.com/a.png" caption="c" />']) {
+    const h = R.renderBody(tag);
+    assert.strictEqual(h, '', tag + ' -> ' + h);
+  }
+  R.setFeatures(['charts', 'memes', 'images', 'diagrams']);
+});
+
+// -- § v3: the @vs directive line ------------------------------------------
+t('directives are split out of the deck', () => {
+  const { markdown, directives } = R.splitDirectives(
+    '# One\n@vs theme parchment\n\n- a\n@vs goto 3\n');
+  assert.ok(!markdown.includes('@vs'), markdown);
+  assert.ok(markdown.includes('# One') && markdown.includes('- a'), markdown);
+  assert.deepStrictEqual(directives,
+    [{ verb: 'theme', arg: 'parchment' }, { verb: 'goto', arg: '3' }]);
+});
+
+t('a @vs line inside a fence is content', () => {
+  const { markdown, directives } = R.splitDirectives('```sh\n@vs next\n```\n');
+  assert.strictEqual(directives.length, 0);
+  assert.ok(markdown.includes('@vs next'), markdown);
+});
+
+t('a directive never reaches a rendered slide', () => {
+  const s = R.slides('---\ntheme: default\n---\n\n# One\n@vs theme noir\n\n---\n\n# Two\n');
+  assert.strictEqual(s.length, 2, 'got ' + s.length);
+  assert.ok(!s[0].html.includes('@vs') && !s[0].html.includes('theme noir'), s[0].html);
+});
+
+// -- § v3: slide descriptors (what both views draw from) -------------------
+t('slides() numbers, layouts, centering and notes', () => {
+  const s = R.slides(DECK);
+  assert.strictEqual(s.length, 3);
+  assert.deepStrictEqual(s.map(x => x.index), [0, 1, 2]);
+  assert.deepStrictEqual(s.map(x => x.layout), ['cover', 'section', 'default']);
+  assert.deepStrictEqual(s.map(x => x.centered), [true, true, false]);
+  assert.ok(s[2].note.includes('p99'), s[2].note);
+  assert.ok(!s[2].html.includes('p99'), 'the note leaked onto the slide');
+});
+
+t('an empty deck is zero slides, not one blank one', () => {
+  assert.strictEqual(R.slides('').length, 0);
+  assert.strictEqual(R.slides('\n\n').length, 0);
+});
+
+t('the first slide is a cover only when it has no layout of its own', () => {
+  assert.strictEqual(R.slides('---\nlayout: fact\n---\n\n# 400ms\n')[0].layout, 'fact');
 });
 
 console.log(`\n${pass} passed, ${fail} failed`);

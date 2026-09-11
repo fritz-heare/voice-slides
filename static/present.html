@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>voice-slides</title>
+<link rel="stylesheet" href="app.css">
+</head>
+<body class="stage">
+<div class="stage-wrap"><div class="slide" id="slide"></div></div>
+<div class="waiting" id="waiting">waiting for the presenter window…</div>
+<script type="module">
+"use strict";
+// ---------------------------------------------------------------------------
+// voice-slides — PRESENTATION view. One slide, full-bleed, nothing else.
+//
+// This window has no WebSocket, no microphone, and no inference. Everything it
+// knows arrives from the presenter over a BroadcastChannel, and everything it
+// needs to draw is already on this origin — app.css, render.js, and the
+// vendored mermaid bundle. Unplug the network mid-talk and the deck keeps
+// presenting; that is the reason the sync is a channel and not a socket.
+//
+// Navigation is bidirectional. The arrow keys work here, because the person
+// driving the projector is not always the person at the laptop, and a move made
+// here is posted back so the presenter's highlight follows.
+// ---------------------------------------------------------------------------
+
+import * as R from './render.js';
+
+const slideEl = document.getElementById('slide'), waitEl = document.getElementById('waiting');
+const chan = new BroadcastChannel('voice-slides');
+let slides = [], i = 0;
+
+function draw() {
+  waitEl.style.display = slides.length ? 'none' : '';
+  if (!slides.length) { slideEl.innerHTML = ''; slideEl.className = 'slide'; return; }
+  i = Math.max(0, Math.min(i, slides.length - 1));
+  const s = slides[i];
+  slideEl.className = 'slide' + (s.centered ? ' mid' : '');
+  slideEl.innerHTML = `<div class="content">${s.html}</div>` +
+                      `<div class="num">${i + 1} / ${slides.length}</div>`;
+  R.hydrateMermaid(slideEl);
+}
+
+chan.onmessage = e => {
+  const m = e.data || {};
+  if (m.k !== 'state') return;
+  if (m.features) R.setFeatures(m.features);
+  const md = m.md || '';
+  // Re-parsing on every state message is the simple thing and it is fast: the
+  // deck is a few kilobytes and a pass lands every few seconds at most.
+  slides = R.slides(md);
+  i = m.i ?? i;
+  if (m.palette) document.documentElement.setAttribute('data-palette', m.palette);
+  if (m.mode === 'auto') document.documentElement.removeAttribute('data-theme');
+  else if (m.mode) document.documentElement.setAttribute('data-theme', m.mode);
+  draw();
+};
+
+function move(to) {
+  const n = slides.length;
+  if (!n) return;
+  i = Math.max(0, Math.min(to, n - 1));
+  draw();
+  chan.postMessage({ k: 'index', i });
+}
+
+document.addEventListener('keydown', e => {
+  if (e.key === 'ArrowRight' || e.key === 'PageDown' || e.code === 'Space') { e.preventDefault(); move(i + 1); }
+  else if (e.key === 'ArrowLeft' || e.key === 'PageUp') move(i - 1);
+  else if (e.key === 'Home') move(0);
+  else if (e.key === 'End') move(slides.length - 1);
+  else if (e.key === 'f') document.documentElement.requestFullscreen?.();
+  else if (e.key === 'Escape') document.exitFullscreen?.();
+});
+slideEl.addEventListener('click', () => move(i + 1));
+
+// The presenter answers a hello with the whole state, so reopening this window
+// after a close needs no reconnection logic on either side.
+chan.postMessage({ k: 'hello' });
+</script>
+</body>
+</html>
